@@ -1,0 +1,84 @@
+{
+  "tracks": [
+    {
+      "id": "wavy",
+      "title": "Wavy",
+      "artist": "Karan Aujla",
+      "src": "/songs/wavy.mp3",
+      "analysis": {
+        "bpm": 89.9857,
+        "p": 0.66677,
+        "ph": 0.22059,
+        "down": 1,
+        "first": 0.905,
+        "last": 159.63,
+        "vox": 11.14249,
+        "dur": 160.68209
+      }
+    },
+    {
+      "id": "mf-gabhru",
+      "title": "MF Gabhru!",
+      "artist": "Karan Aujla, Ikky",
+      "src": "/songs/mf-gabhru.mp3",
+      "analysis": {
+        "bpm": 95.9911,
+        "p": 0.62506,
+        "ph": 0.55147,
+        "down": 0,
+        "first": 1.01,
+        "last": 203.98,
+        "vox": 18.75864,
+        "dur": 210.72109
+      }
+    },
+    {
+      "id": "ashke",
+      "title": "Ashke",
+      "artist": "Karan Aujla",
+      "src": "/songs/ashke.mp3",
+      "analysis": {
+        "bpm": 133.99177,
+        "p": 0.44779,
+        "ph": 0.03483,
+        "down": 3,
+        "first": 1.99,
+        "last": 214.61,
+        "vox": 28.1395,
+        "dur": 218.05859
+      }
+    },
+    {
+      "id": "straight-up",
+      "title": "Straight Up",
+      "artist": "Karan Aujla",
+      "src": "/songs/straight-up.mp3",
+      "analysis": {
+        "bpm": 137.97807,
+        "p": 0.43485,
+        "ph": 0.02322,
+        "down": 1,
+        "first": 0.155,
+        "last": 214.705,
+        "vox": 12.58213,
+        "dur": 214.73814
+      }
+    },
+    {
+      "id": "on-top",
+      "title": "On Top",
+      "artist": "Karan Aujla",
+      "src": "/songs/on-top.mp3",
+      "analysis": {
+        "bpm": 140.01086,
+        "p": 0.42854,
+        "ph": 0.30186,
+        "down": 3,
+        "first": 2.445,
+        "last": 182.005,
+        "vox": 15.32209,
+        "dur": 186.92063
+      }
+    }
+  ]
+}

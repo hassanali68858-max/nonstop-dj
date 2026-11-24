@@ -1,26 +1,106 @@
 @import "tailwindcss";
 
+/* Nonstop design tokens. Dark first, matching light theme. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #000000;
+  --surface: #121214;
+  --elev: #1b1b1f;
+  --elev2: #26262c;
+  --ink: #f5f5f7;
+  --mute: #a1a1a9;
+  --faint: #6b6b74;
+  --line: rgba(255, 255, 255, 0.08);
+  --deck-a: #4ea8ff;
+  --deck-b: #ff9a4d;
+  --hot: #ff3b5c;
+  --well: #0a0a0c;
+  --play: #ffffff;
+  --play-ink: #000000;
+  color-scheme: dark;
 }
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #e9e9ee;
+    --surface: #ffffff;
+    --elev: #f3f3f6;
+    --elev2: #e8e8ed;
+    --ink: #1d1d1f;
+    --mute: #6e6e73;
+    --faint: #9a9aa1;
+    --line: rgba(0, 0, 0, 0.08);
+    --deck-a: #0a72e6;
+    --deck-b: #e0650c;
+    --hot: #e5243f;
+    --well: #f6f6f9;
+    --play: #1d1d1f;
+    --play-ink: #ffffff;
+    color-scheme: light;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-elev: var(--elev);
+  --color-elev2: var(--elev2);
+  --color-ink: var(--ink);
+  --color-mute: var(--mute);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-deck-a: var(--deck-a);
+  --color-deck-b: var(--deck-b);
+  --color-hot: var(--hot);
+  --color-well: var(--well);
+  --color-play: var(--play);
+  --color-play-ink: var(--play-ink);
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+* { min-width: 0; }
+html, body { height: 100%; }
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+:focus-visible { outline: 2px solid var(--deck-a); outline-offset: 2px; border-radius: 8px; }
+
+.tnum { font-variant-numeric: tabular-nums; }
+.scroll-y { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--elev2) transparent; }
+
+/* range inputs: thin Spotify-style track */
+input[type="range"].slim {
+  -webkit-appearance: none; appearance: none; background: transparent; height: 20px; cursor: pointer;
+}
+input[type="range"].slim::-webkit-slider-runnable-track { height: 4px; border-radius: 99px; background: linear-gradient(90deg, var(--ink) var(--v, 50%), var(--elev2) var(--v, 50%)); }
+input[type="range"].slim::-moz-range-track { height: 4px; border-radius: 99px; background: var(--elev2); }
+input[type="range"].slim::-moz-range-progress { height: 4px; border-radius: 99px; background: var(--ink); }
+input[type="range"].slim::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--ink); margin-top: -4px; opacity: 0; transition: opacity .15s; }
+input[type="range"].slim:hover::-webkit-slider-thumb, input[type="range"].slim:focus-visible::-webkit-slider-thumb { opacity: 1; }
+input[type="range"].slim::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--ink); }
+
+@keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+.shimmer {
+  background: linear-gradient(90deg, var(--elev) 0, var(--elev2) 50%, var(--elev) 100%);
+  background-size: 400px 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+@keyframes eq { 0%,100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+.eq i { display: block; width: 3px; border-radius: 2px; background: var(--hot); transform-origin: bottom; animation: eq .9s ease-in-out infinite; }
+.eq i:nth-child(2) { animation-delay: -.3s; } .eq i:nth-child(3) { animation-delay: -.6s; }
+.eq.paused i { animation-play-state: paused; }
+
+@keyframes sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.sheet-in { animation: sheet-in .28s cubic-bezier(.2,.8,.2,1); }
+.pop-in { animation: pop-in .18s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer, .eq i, .sheet-in, .pop-in { animation: none !important; }
+  * { transition: none !important; }
 }
