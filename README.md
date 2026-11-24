@@ -44,24 +44,35 @@ Open http://localhost:3000 and press Play.
 
 | Path | What it does |
 |---|---|
-| `src/lib/analysis.ts` | Tempo + beat grid, bars, audible range, vocal-entry detection |
-| `src/lib/engine.ts` | Two-deck mix engine: planning, beat-matching, transitions, transport |
-| `src/components/NonstopApp.tsx` | App shell: sidebar, main view, player bar, sheets |
-| `src/components/NowPlaying.tsx` | Hero, beat view, deck cards, crossfader |
-| `src/components/SetList.tsx` | The playlist ("Your set") |
-| `src/components/PlayerBar.tsx` | Bottom transport bar with seek and volume |
-| `src/components/Settings.tsx` | Mix settings panel / sheet |
+| `src/lib/analysis.ts` | Tempo + beat grid, vocal entry, musical key (Camelot), song sections |
+| `src/lib/engine.ts` | Two-deck mix engine: planning, beat-matching (incl. 3:2), transitions, transport |
+| `src/components/NonstopApp.tsx` | App shell: sidebar, main view, floating player, mobile sheet, toasts |
+| `src/components/Hero.tsx` | Now-playing header: artwork, status, title, BPM, vocals, key |
+| `src/components/TrackPanel.tsx` | Big song overview (played, mix-out zone, sections) + beat-lock view |
+| `src/components/DeckCard.tsx` / `MixCenter.tsx` | Deck A/B cards, crossfader, countdown, transition menu |
+| `src/components/SetList.tsx` | The playlist ("Your set") with animated reordering |
+| `src/components/PlayerBar.tsx` | Floating transport bar, Auto-Sync, settings popover, volume |
 | `src/proxy.ts` | Optional password lock (`SITE_PASSWORD`) |
+
+UI libraries: [Motion](https://motion.dev) for animation, [Radix UI](https://www.radix-ui.com)
+for the menu, popover and slider, [NumberFlow](https://number-flow.barvian.me) for rolling
+numbers, [Sonner](https://sonner.emilkowal.ski) for toasts, [Lucide](https://lucide.dev) icons.
+
+Keys for the pre-loaded songs come from an offline analysis; keys for songs you
+add are estimated in the browser and marked as estimates.
 
 ## How a transition works
 
-- **Bass swap** (tempos within the max shift, default 8%): the ending song
+- **Bass swap** (tempos within the max shift, default 8%; default blend 10 seconds): the ending song
   eases to the next song's tempo over 8 beats, the new intro fades in with
   its bass cut, the basslines swap halfway, the old song fades out.
 - **Filter sweep**: the new song opens up from a low-pass filter.
-- **Echo out** (tempos too far apart): the new intro comes in with kick and
-  bass filtered out, the old song's last beat is thrown into an echo, and
-  the full beat drops together with the vocals.
+- **3:2 beat lock**: songs whose tempos relate 2:3 (for example 90 and 135 BPM)
+  are locked so three beats of one fit two of the other, then bass-swapped.
+- **Echo out** (tempos too far apart): over the last ~10 seconds the new intro
+  comes in with its kick building up while the old song is muffled; the old
+  song's last beat is thrown into an echo, the new groove plays alone for two
+  bars, then the vocals start.
 
 The next song always plays at its own speed and pitch. Click any waveform to
 move where a song's vocals start (it snaps to the nearest bar); double-click

@@ -22,13 +22,13 @@ export function MiniWave({ track, deck, slot, className = "h-14" }: { track: Tra
       g.globalAlpha = 0.18; g.fillStyle = c.hot; g.fillRect(a, 0, b - a, H);
     }
     g.fillStyle = col;
-    for (let x = 0; x < W; x += 2 * r) {
+    for (let x = 0; x < W; x += 3 * r) {
       let m = 0;
-      for (let i = Math.floor(x * per), z = Math.floor((x + 2 * r) * per); i < z; i++) if (t.peaks[i] > m) m = t.peaks[i];
-      const v = Math.max(r / 2, (m / t.gmax) * H * 0.46);
-      g.globalAlpha = deck && x < px ? 1 : 0.35;
+      for (let i = Math.floor(x * per), z = Math.floor((x + 3 * r) * per); i < z; i++) if (t.peaks[i] > m) m = t.peaks[i];
+      const v = Math.max(r, (m / t.gmax) * H * 0.4);
+      g.globalAlpha = deck && x < px ? 1 : 0.38;
       g.beginPath();
-      g.roundRect(x, H / 2 - v, Math.max(1, r * 1.2), 2 * v, r);
+      g.roundRect(x, H / 2 - v, 2 * r, 2 * v, r);
       g.fill();
     }
     if (plan && plan.next === t && deck !== e.cur) {

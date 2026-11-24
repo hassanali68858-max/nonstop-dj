@@ -35,7 +35,7 @@ export function useFrame(fn: () => void) {
   }, []);
 }
 
-export type Palette = { a: string; b: string; hot: string; ink: string; well: string; line: string; mute: string };
+export type Palette = { a: string; b: string; hot: string; ink: string; well: string; line: string; mute: string; faint: string; vox: string };
 let pal: Palette | null = null;
 let palAt = 0;
 /** Current theme colours for canvas drawing (refreshed every second). */
@@ -44,7 +44,7 @@ export function palette(): Palette {
   if (!pal || t - palAt > 1000) {
     const s = getComputedStyle(document.documentElement);
     const v = (n: string) => s.getPropertyValue(n).trim();
-    pal = { a: v("--deck-a"), b: v("--deck-b"), hot: v("--hot"), ink: v("--ink"), well: v("--well"), line: v("--line"), mute: v("--mute") };
+    pal = { a: v("--deck-a"), b: v("--deck-b"), hot: v("--hot"), ink: v("--ink"), well: v("--well"), line: v("--line"), mute: v("--mute"), faint: v("--faint"), vox: v("--vox") };
     palAt = t;
   }
   return pal;

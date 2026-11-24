@@ -1,5 +1,5 @@
 // Nonstop mix engine: two decks, beat-matched, vocal-timed transitions.
-import { analyze, computePeaks, synthDemo, PR, type Analysis } from "./analysis";
+import { analyze, computePeaks, detectKey, findSections, synthDemo, PR, type Analysis, type KeyInfo, type Section } from "./analysis";
 
 export const MAX_TRACKS = 10;
 export type Style = "auto" | "swap" | "filter" | "echo";
@@ -17,6 +17,7 @@ export interface Options {
   shift: number; // max tempo change, e.g. 0.08
   loop: boolean;
   vol: number;
+  sync: boolean; // Auto-Sync: beat-match when possible
 }
 
 export type TrackStatus = "queued" | "loading" | "analyzing" | "ready" | "error";
@@ -34,6 +35,10 @@ export interface Track extends Analysis {
   cue: number | null; // user-set vocal cue
   hue: number;
   pre?: Partial<Analysis>;
+  key?: KeyInfo;
+  keyEstimated?: boolean;
+  preKey?: KeyInfo;
+  sections: Section[];
 }
 
 export interface Deck {
@@ -75,6 +80,7 @@ export interface Plan {
   zB: number;
   match: boolean;
   want: number;
+  M: number; // echo: old song cut
   armed: boolean;
   done?: number;
   deck?: Deck;
@@ -118,7 +124,7 @@ export const fmt = (s: number) => {
   return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 };
 
-const DEFAULTS: Options = { style: "auto", blend: 8, enter: "vocals", shift: 0.08, loop: true, vol: 0.85 };
+const DEFAULTS: Options = { style: "auto", blend: 10, enter: "vocals", shift: 0.08, loop: true, vol: 0.85, sync: true };
 
 type Listener = () => void;
 
@@ -142,7 +148,7 @@ export class Engine {
 
   constructor() {
     try {
-      Object.assign(this.opt, JSON.parse(localStorage.getItem("nonstop-opt") || "{}"));
+      Object.assign(this.opt, JSON.parse(localStorage.getItem("nonstop-opt-v2") || "{}"));
       this.cues = JSON.parse(localStorage.getItem("nonstop-cues") || "{}");
     } catch {}
     setInterval(() => this.tick(), 100);
@@ -167,7 +173,7 @@ export class Engine {
   }
   private save() {
     try {
-      localStorage.setItem("nonstop-opt", JSON.stringify(this.opt));
+      localStorage.setItem("nonstop-opt-v2", JSON.stringify(this.opt));
       localStorage.setItem("nonstop-cues", JSON.stringify(this.cues));
     } catch {}
   }
@@ -194,7 +200,7 @@ export class Engine {
   /* ---------- adding songs ---------- */
   private blank(id: string, title: string, artist: string): Track {
     return {
-      id, title, artist, status: "queued", gmax: 1, cue: null, hue: HUES[this.uid % HUES.length],
+      id, title, artist, status: "queued", gmax: 1, cue: null, sections: [], hue: HUES[this.uid % HUES.length],
       bpm: 0, p: 0.5, ph: 0, down: 0, first: 0, last: 0, vox: null, dur: 0,
     };
   }
@@ -203,11 +209,12 @@ export class Engine {
     this.booted = true;
     try {
       const res = await fetch(url);
-      const m = (await res.json()) as { tracks: { id: string; title: string; artist: string; src: string; analysis?: Partial<Analysis> }[] };
+      const m = (await res.json()) as { tracks: { id: string; title: string; artist: string; src: string; analysis?: Partial<Analysis>; key?: KeyInfo }[] };
       for (const t of m.tracks.slice(0, MAX_TRACKS - this.tracks.length)) {
         const tr = this.blank(t.id + "-" + ++this.uid, t.title, t.artist);
         tr.src = t.src;
         tr.pre = t.analysis;
+        tr.preKey = t.key;
         this.tracks.push(tr);
       }
       this.emit();
@@ -278,6 +285,9 @@ export class Engine {
           this.emit();
           Object.assign(t, await analyze(t.buf, pk));
         }
+        if (t.preKey) t.key = t.preKey;
+        else { t.key = await detectKey(t.buf); t.keyEstimated = true; }
+        t.sections = findSections({ peaks: t.peaks!, p: t.p, ph: t.ph, down: t.down, first: t.first, last: t.last, vox: t.vox, dur: t.dur });
         t.cue = this.cues[this.ckey(t)] ?? null;
         t.status = "ready";
       } catch (e) {
@@ -371,28 +381,43 @@ export class Engine {
     return null;
   }
   private tempoMatch(tr: Track, nt: Track) {
-    let k = 1, r = 1, dev = 9;
-    for (const kk of [0.5, 1, 2]) {
-      const rr = tr.p / (kk * nt.p);
-      if (Math.abs(rr - 1) < dev) { dev = Math.abs(rr - 1); r = rr; k = kk; }
-    }
-    return { k, r, dev, match: dev <= this.opt.shift + 1e-9 };
+    // 1:1, half and double time first; then a 3:2 lock (e.g. 90 BPM into 135) if it is very close
+    const best = (ks: number[]) => {
+      let k = 1, r = 1, dev = 9;
+      for (const kk of ks) {
+        const rr = tr.p / (kk * nt.p);
+        if (Math.abs(rr - 1) < dev) { dev = Math.abs(rr - 1); r = rr; k = kk; }
+      }
+      return { k, r, dev };
+    };
+    const a = best([0.5, 1, 2]);
+    if (a.dev <= this.opt.shift + 1e-9) return { ...a, match: true };
+    const b = best([2 / 3, 1.5]);
+    if (b.dev <= Math.min(this.opt.shift, 0.04) + 1e-9) return { ...b, match: true };
+    return { ...a, match: false };
   }
   private computePlan(d: Deck, nt: Track, forceMo?: number): Plan {
     const tr = d.track, m = this.tempoMatch(tr, nt);
     let style: Plan["style"] = this.opt.style === "auto" ? "swap" : this.opt.style;
-    if (!m.match) style = "echo";
-    const k = style === "echo" ? 1 : m.k, r1 = style === "echo" ? 1 : m.r, ramp = Math.abs(r1 - 1) > 1e-4;
-    let L = Math.max(4, Math.round(this.opt.blend / nt.p / 4) * 4), Vb: number, usedCue = false;
+    if (!m.match || !this.opt.sync) style = "echo";
+    const echo = style === "echo";
+    const k = echo ? 1 : m.k, r1 = echo ? 1 : m.r, ramp = Math.abs(r1 - 1) > 1e-4;
+    // overlap length in incoming beats must keep both songs' bars aligned
+    const step = Math.abs(k - 1.5) < 1e-6 ? 12 : Math.abs(k - 2 / 3) < 1e-6 ? 8 : 4;
+    let Lov = Math.max(step, Math.round(this.opt.blend / nt.p / step) * step);
+    let solo = echo ? 8 : 0; // echo: let the new groove run alone for 2 bars before the vocals
     const ent = entryBeat(nt), cue = this.opt.enter === "vocals" ? this.cueOf(nt) : null;
+    let Vb: number, usedCue = false;
     if (cue != null && cue > beatT(nt, ent) + 0.5) {
       Vb = Math.round((cue - nt.ph) / nt.p);
       const a = barAlign(nt, Vb, 4);
       Vb += a === 3 ? 1 : -a;
-      if (Vb - ent >= 4) L = Math.min(L, Math.floor((Vb - ent) / 4) * 4);
+      const avail = Vb - ent;
+      if (echo) solo = avail >= Lov + 8 ? 8 : avail >= 12 ? 4 : 0;
+      if (avail - solo >= step) Lov = Math.min(Lov, Math.floor((avail - solo) / step) * step);
       usedCue = true;
-    } else Vb = ent + L;
-    const S = Vb - L, Lo = Math.round(L / k), lastI = Math.floor((tr.last - tr.ph) / tr.p);
+    } else Vb = ent + Lov + solo;
+    const L = Lov + solo, S = Vb - L, Lo = Math.round(Lov / k), lastI = Math.floor((tr.last - tr.ph) / tr.p);
     let Eo: number;
     if (forceMo != null) Eo = forceMo + Lo;
     else {
@@ -400,22 +425,24 @@ export class Engine {
       while (Eo > 0 && barAlign(tr, Eo, 4)) Eo--;
     }
     const Mo = Eo - Lo;
-    let T: number, E: number, Ta: number;
-    if (style === "echo") {
-      E = this.timeOf(d, beatT(tr, Eo));
-      T = E - L * nt.p;
+    let T: number, E: number, Ta: number, M: number;
+    if (echo) {
+      M = this.timeOf(d, beatT(tr, Eo));
+      T = M - Lov * nt.p;
+      E = M + solo * nt.p;
       Ta = T;
     } else {
       Ta = this.timeOf(d, beatT(tr, Mo - (ramp ? RB : 0)));
       T = ramp ? Ta + (2 * RB * tr.p) / (1 + r1) : Ta;
       E = T + L * nt.p;
+      M = E;
     }
-    const zA = style === "echo" ? beatT(tr, Eo) - (E - T) : beatT(tr, Mo - (ramp ? RB : 0));
-    return { from: d, next: nt, style, k, r1, ramp, L, S, Vb, usedCue, T, E, Ta, zA, zB: beatT(tr, Eo), match: m.match, want: m.dev, armed: false };
+    const zA = echo ? beatT(tr, Eo) - (M - T) : beatT(tr, Mo - (ramp ? RB : 0));
+    return { from: d, next: nt, style, k, r1, ramp, L, S, Vb, usedCue, T, E, Ta, M, zA, zB: beatT(tr, Eo), match: m.match, want: m.dev, armed: false };
   }
   private planNow(nt: Track) {
     const cur = this.cur!, tr = cur.track, m = this.tempoMatch(tr, nt), now = this.now();
-    const ramp = m.match && this.opt.style !== "echo" && Math.abs(m.r - 1) > 1e-4;
+    const ramp = m.match && this.opt.sync && this.opt.style !== "echo" && Math.abs(m.r - 1) > 1e-4;
     let b = Math.ceil((this.posAt(cur, now + 0.6) - tr.ph) / tr.p) + (ramp ? RB : 0);
     while (barAlign(tr, b, 4)) b++;
     let P = this.computePlan(cur, nt, b);
@@ -442,22 +469,25 @@ export class Engine {
       o.src.playbackRate.linearRampToValueAtTime(r1, T);
     }
     if (style === "echo") {
-      const Bo = o.track.p;
+      // The new song's intro takes over while the old one muffles, then the old song's
+      // last beat is thrown into an echo and the new groove runs alone until the vocals.
+      const Bo = o.track.p, M = P.M;
       o.dl.delayTime.value = Math.min(1.9, Bo * 0.75);
       o.lp.frequency.setValueAtTime(20000, T);
-      o.lp.frequency.exponentialRampToValueAtTime(3000, E);
-      o.send.gain.setValueAtTime(0, E - Bo);
-      o.send.gain.linearRampToValueAtTime(0.9, E - Bo + 0.02);
-      o.send.gain.setValueAtTime(0.9, E - 0.01);
-      o.send.gain.linearRampToValueAtTime(0, E + 0.01);
-      o.g.gain.setValueAtTime(1, E - 0.012);
-      o.g.gain.linearRampToValueAtTime(0, E + 0.01);
-      d.hp.frequency.value = 400;
-      d.hp.frequency.setValueAtTime(400, E - 0.01);
-      d.hp.frequency.linearRampToValueAtTime(20, E + 0.03);
+      o.lp.frequency.exponentialRampToValueAtTime(700, M);
+      o.g.gain.setValueAtTime(1, T);
+      o.g.gain.linearRampToValueAtTime(0.6, M - 0.012);
+      o.g.gain.linearRampToValueAtTime(0, M + 0.01);
+      o.send.gain.setValueAtTime(0, M - Bo);
+      o.send.gain.linearRampToValueAtTime(0.8, M - Bo + 0.02);
+      o.send.gain.setValueAtTime(0.8, M - 0.01);
+      o.send.gain.linearRampToValueAtTime(0, M + 0.01);
+      d.hp.frequency.value = 300;
+      d.hp.frequency.setValueAtTime(300, T);
+      d.hp.frequency.exponentialRampToValueAtTime(20, M);
       d.g.gain.value = 0;
-      d.g.gain.setValueCurveAtTime(curve(true, 0.75), T, Math.max(0.05, E - 0.03 - T));
-      d.g.gain.linearRampToValueAtTime(1, E + 0.02);
+      d.g.gain.setValueCurveAtTime(curve(true, 0.9), T, Math.max(0.05, M - T));
+      d.g.gain.linearRampToValueAtTime(1, M + 0.4);
     } else {
       const fin = style === "swap" ? H : T + (L / 4) * B, fo = style === "swap" ? H : T + ((3 * L) / 4) * B;
       d.g.gain.value = 0;
@@ -479,9 +509,10 @@ export class Engine {
     const off = beatT(nt, S);
     if (off < 0) this.startDeck(d, T - off, 0);
     else this.startDeck(d, T, off);
-    o.stopAt = E + 0.05;
-    o.src.stop(E + 0.05);
-    P.done = E + 0.05;
+    const end = style === "echo" ? P.M : E;
+    o.stopAt = end + 0.05;
+    o.src.stop(end + 0.05);
+    P.done = end + 0.05;
     P.armed = true;
     P.deck = d;
   }
@@ -670,12 +701,13 @@ export class Engine {
     if (!plan) return { title: "Last song", detail: this.opt.loop ? "Add another song to keep the set going" : "Loop is off, so the set ends here", progress: 0, left: 0, active: false };
     const left = plan.T - now;
     const progress = Math.max(0, Math.min(1, (now - plan.T) / (plan.E - plan.T)));
+    const lock = Math.abs(plan.k - 1.5) < 1e-6 || Math.abs(plan.k - 2 / 3) < 1e-6 ? "3:2 beat lock" : "";
     const tempo = plan.style === "echo"
-      ? plan.match ? "" : `tempos ${(plan.want * 100).toFixed(1)}% apart`
-      : plan.ramp ? `ending song ${plan.r1 > 1 ? "+" : "−"}${Math.abs((plan.r1 - 1) * 100).toFixed(1)}%` : "tempos match";
+      ? `new beat leads for ${Math.round(plan.E - plan.M)}s`
+      : [lock, plan.ramp ? `ending song ${plan.r1 > 1 ? "+" : "−"}${Math.abs((plan.r1 - 1) * 100).toFixed(1)}%` : "tempos match"].filter(Boolean).join(", ");
     return {
       title: left > 0 ? `Next mix in ${fmt(left)}` : `Mixing · ${Math.round(progress * 100)}%`,
-      detail: [STYLE_NAMES[plan.style], `${Math.round(plan.E - plan.T)}s blend`, tempo, plan.usedCue ? "vocals hit as it ends" : "next song from its start"].filter(Boolean).join(" · "),
+      detail: [STYLE_NAMES[plan.style], `${Math.round((plan.style === "echo" ? plan.M : plan.E) - plan.T)}s blend`, tempo, plan.usedCue ? (plan.style === "echo" ? "then vocals" : "vocals hit as it ends") : "next song from its start"].filter(Boolean).join(" · "),
       style: STYLE_NAMES[plan.style],
       next: plan.next,
       progress,
@@ -697,6 +729,9 @@ export class Engine {
 let instance: Engine | null = null;
 export function getEngine() {
   if (typeof window === "undefined") return null;
-  if (!instance) instance = new Engine();
+  if (!instance) {
+    instance = new Engine();
+    (window as unknown as { __nonstop: Engine }).__nonstop = instance;
+  }
   return instance;
 }

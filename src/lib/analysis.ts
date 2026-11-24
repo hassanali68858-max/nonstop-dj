@@ -306,3 +306,120 @@ export async function synthDemo(bpm: number, root: number, prog: number[]): Prom
   }
   return c.startRendering();
 }
+
+/* ---------- musical key (Krumhansl–Schmuckler on a chromagram) ---------- */
+export interface KeyInfo {
+  camelot: string; // e.g. "8A"
+  name: string; // e.g. "A minor"
+}
+const NOTE = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
+const CAM_MAJ = [8, 3, 10, 5, 12, 7, 2, 9, 4, 11, 6, 1];
+const CAM_MIN = [5, 12, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10];
+const PROF_MAJ = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const PROF_MIN = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+
+function fftN(re: Float64Array, im: Float64Array) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      let t = re[i]; re[i] = re[j]; re[j] = t;
+      t = im[i]; im[i] = im[j]; im[j] = t;
+    }
+  }
+  for (let size = 2; size <= n; size <<= 1) {
+    const h = size >> 1, ang = (-2 * Math.PI) / size, wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let st = 0; st < n; st += size) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < h; k++) {
+        const a = st + k, b = a + h, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+      }
+    }
+  }
+}
+
+function corr(a: number[], b: number[]) {
+  const n = a.length, ma = a.reduce((s, x) => s + x, 0) / n, mb = b.reduce((s, x) => s + x, 0) / n;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < n; i++) { num += (a[i] - ma) * (b[i] - mb); da += (a[i] - ma) ** 2; db += (b[i] - mb) ** 2; }
+  return num / Math.sqrt(da * db || 1);
+}
+
+export async function detectKey(buf: AudioBuffer): Promise<KeyInfo> {
+  // mono, decimated to ~11 kHz (chroma only needs up to ~2 kHz)
+  const dec = Math.max(1, Math.round(buf.sampleRate / 11025)), SR = buf.sampleRate / dec;
+  const chs: Float32Array[] = [];
+  for (let i = 0; i < buf.numberOfChannels; i++) chs.push(buf.getChannelData(i));
+  const n = Math.floor(buf.length / dec), x = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let s = 0; for (const c of chs) s += c[i * dec]; x[i] = s / chs.length; }
+  const N = 4096, hop = Math.round(SR * 0.25);
+  const win = new Float64Array(N).map((_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N));
+  const pcOf = new Int8Array(N / 2).fill(-1), wOf = new Float32Array(N / 2);
+  for (let k = 1; k < N / 2; k++) {
+    const f = (k * SR) / N;
+    if (f < 60 || f > 2000) continue;
+    const m = 12 * Math.log2(f / 440) + 69, r = Math.round(m);
+    if (Math.abs(m - r) > 0.35) continue; // only bins close to a semitone centre
+    pcOf[k] = ((r % 12) + 12) % 12;
+    wOf[k] = 1 - Math.abs(m - r) / 0.35;
+  }
+  const chroma = new Array(12).fill(0), re = new Float64Array(N), im = new Float64Array(N);
+  for (let o = 0, fi = 0; o + N <= n; o += hop, fi++) {
+    for (let i = 0; i < N; i++) { re[i] = x[o + i] * win[i]; im[i] = 0; }
+    fftN(re, im);
+    const fc = new Array(12).fill(0);
+    let tot = 0;
+    for (let k = 1; k < N / 2; k++) {
+      const pc = pcOf[k];
+      if (pc < 0) continue;
+      const v = Math.sqrt(re[k] * re[k] + im[k] * im[k]) * wOf[k];
+      fc[pc] += v; tot += v;
+    }
+    if (tot > 0) for (let i = 0; i < 12; i++) chroma[i] += fc[i] / tot; // each frame votes equally
+    if (fi % 60 === 59) await yieldUI();
+  }
+  let best = { s: -2, pc: 0, minor: false };
+  for (let pc = 0; pc < 12; pc++) {
+    const rot = (p: number[]) => p.map((_, i) => p[(i - pc + 12) % 12]);
+    const sMaj = corr(chroma, rot(PROF_MAJ)), sMin = corr(chroma, rot(PROF_MIN));
+    if (sMaj > best.s) best = { s: sMaj, pc, minor: false };
+    if (sMin > best.s) best = { s: sMin, pc, minor: true };
+  }
+  return {
+    camelot: (best.minor ? CAM_MIN[best.pc] : CAM_MAJ[best.pc]) + (best.minor ? "A" : "B"),
+    name: `${NOTE[best.pc]} ${best.minor ? "minor" : "major"}`,
+  };
+}
+
+/* ---------- song sections from bar energy ---------- */
+export interface Section { t: number; label: string }
+export function findSections(a: { peaks: Float32Array; p: number; ph: number; down: number; first: number; last: number; vox: number | null; dur: number }): Section[] {
+  const bar = a.p * 4, start = a.ph + a.down * a.p;
+  const nb = Math.floor((a.last - start) / bar);
+  if (nb < 16) return [{ t: 0, label: "Intro" }];
+  const e: number[] = [];
+  for (let b = 0; b < nb; b++) {
+    const i0 = Math.max(0, Math.floor((start + b * bar) * PR)), i1 = Math.min(a.peaks.length, Math.floor((start + (b + 1) * bar) * PR));
+    let s = 0;
+    for (let i = i0; i < i1; i++) s += a.peaks[i];
+    e.push(i1 > i0 ? s / (i1 - i0) : 0);
+  }
+  // 8-bar phrases
+  const ph: { t: number; e: number }[] = [];
+  for (let b = 0; b + 8 <= nb; b += 8) ph.push({ t: start + b * bar, e: e.slice(b, b + 8).reduce((s, x) => s + x, 0) / 8 });
+  const max = Math.max(...ph.map((x) => x.e)) || 1;
+  const out: Section[] = [{ t: 0, label: "Intro" }];
+  const vt = a.vox ?? null;
+  if (vt != null && vt > 4) out.push({ t: vt, label: "Verse" });
+  const after = vt ?? a.first;
+  const hookI = ph.findIndex((x, i) => x.t > after + bar * 4 && x.e >= 0.92 * max && (i === 0 || ph[i - 1].e < 0.97 * x.e));
+  const hook = hookI >= 0 ? ph[hookI] : ph.reduce((m, x) => (x.e > m.e ? x : m), ph[0]);
+  if (hook.t > after + bar * 2) out.push({ t: hook.t, label: "Hook" });
+  const brk = ph.find((x) => x.t > hook.t + bar * 8 && x.e < 0.72 * max && x.t < a.last - bar * 12);
+  if (brk) out.push({ t: brk.t, label: "Break" });
+  return out.sort((x, y) => x.t - y.t);
+}

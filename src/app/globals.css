@@ -1,66 +1,54 @@
 @import "tailwindcss";
 
-/* Nonstop design tokens. Dark first, matching light theme. */
+/* Nonstop: midnight booth. Deck A blue, deck B orange, red playhead, green vocals. */
 :root {
-  --bg: #000000;
-  --surface: #121214;
-  --elev: #1b1b1f;
-  --elev2: #26262c;
-  --ink: #f5f5f7;
-  --mute: #a1a1a9;
-  --faint: #6b6b74;
-  --line: rgba(255, 255, 255, 0.08);
-  --deck-a: #4ea8ff;
-  --deck-b: #ff9a4d;
-  --hot: #ff3b5c;
-  --well: #0a0a0c;
-  --play: #ffffff;
-  --play-ink: #000000;
+  --bg: #080b11;
+  --panel: #0e121a;
+  --panel2: #141a25;
+  --panel3: #1b2230;
+  --ink: #eef1f6;
+  --mute: #8d95a5;
+  --faint: #5a6273;
+  --line: rgba(255, 255, 255, 0.07);
+  --line2: rgba(255, 255, 255, 0.12);
+  --deck-a: #3b82f6;
+  --deck-b: #f97316;
+  --hot: #f43f5e;
+  --vox: #34d399;
+  --amber: #f5a524;
+  --well: rgba(0, 0, 0, 0.28);
   color-scheme: dark;
-}
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #e9e9ee;
-    --surface: #ffffff;
-    --elev: #f3f3f6;
-    --elev2: #e8e8ed;
-    --ink: #1d1d1f;
-    --mute: #6e6e73;
-    --faint: #9a9aa1;
-    --line: rgba(0, 0, 0, 0.08);
-    --deck-a: #0a72e6;
-    --deck-b: #e0650c;
-    --hot: #e5243f;
-    --well: #f6f6f9;
-    --play: #1d1d1f;
-    --play-ink: #ffffff;
-    color-scheme: light;
-  }
 }
 
 @theme inline {
   --color-bg: var(--bg);
-  --color-surface: var(--surface);
-  --color-elev: var(--elev);
-  --color-elev2: var(--elev2);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel2);
+  --color-panel3: var(--panel3);
   --color-ink: var(--ink);
   --color-mute: var(--mute);
   --color-faint: var(--faint);
   --color-line: var(--line);
+  --color-line2: var(--line2);
   --color-deck-a: var(--deck-a);
   --color-deck-b: var(--deck-b);
   --color-hot: var(--hot);
+  --color-vox: var(--vox);
+  --color-amber: var(--amber);
   --color-well: var(--well);
-  --color-play: var(--play);
-  --color-play-ink: var(--play-ink);
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --animate-pop: pop 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+
+@keyframes pop { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
 
 * { min-width: 0; }
 html, body { height: 100%; }
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 600px at 70% -10%, rgba(59, 130, 246, 0.07), transparent 60%),
+    var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -68,39 +56,23 @@ body {
 }
 button { cursor: pointer; }
 button:disabled { cursor: default; }
-:focus-visible { outline: 2px solid var(--deck-a); outline-offset: 2px; border-radius: 8px; }
+:focus-visible { outline: 2px solid var(--deck-a); outline-offset: 2px; border-radius: 10px; }
+::selection { background: rgba(59, 130, 246, 0.35); }
 
-.tnum { font-variant-numeric: tabular-nums; }
-.scroll-y { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--elev2) transparent; }
-
-/* range inputs: thin Spotify-style track */
-input[type="range"].slim {
-  -webkit-appearance: none; appearance: none; background: transparent; height: 20px; cursor: pointer;
-}
-input[type="range"].slim::-webkit-slider-runnable-track { height: 4px; border-radius: 99px; background: linear-gradient(90deg, var(--ink) var(--v, 50%), var(--elev2) var(--v, 50%)); }
-input[type="range"].slim::-moz-range-track { height: 4px; border-radius: 99px; background: var(--elev2); }
-input[type="range"].slim::-moz-range-progress { height: 4px; border-radius: 99px; background: var(--ink); }
-input[type="range"].slim::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--ink); margin-top: -4px; opacity: 0; transition: opacity .15s; }
-input[type="range"].slim:hover::-webkit-slider-thumb, input[type="range"].slim:focus-visible::-webkit-slider-thumb { opacity: 1; }
-input[type="range"].slim::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--ink); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.scroll-y { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--panel3) transparent; }
+.glass { background: color-mix(in oklab, var(--panel) 78%, transparent); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); }
+.card { background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0) 40%), var(--panel); border: 1px solid var(--line); }
 
 @keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
-.shimmer {
-  background: linear-gradient(90deg, var(--elev) 0, var(--elev2) 50%, var(--elev) 100%);
-  background-size: 400px 100%;
-  animation: shimmer 1.2s linear infinite;
-}
+.shimmer { background: linear-gradient(90deg, var(--panel2) 0, var(--panel3) 50%, var(--panel2) 100%); background-size: 400px 100%; animation: shimmer 1.2s linear infinite; }
 @keyframes eq { 0%,100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
 .eq i { display: block; width: 3px; border-radius: 2px; background: var(--hot); transform-origin: bottom; animation: eq .9s ease-in-out infinite; }
 .eq i:nth-child(2) { animation-delay: -.3s; } .eq i:nth-child(3) { animation-delay: -.6s; }
 .eq.paused i { animation-play-state: paused; }
-
-@keyframes sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
-@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
-.sheet-in { animation: sheet-in .28s cubic-bezier(.2,.8,.2,1); }
-.pop-in { animation: pop-in .18s ease-out; }
+@keyframes pulse-dot { 0%,100% { box-shadow: 0 0 0 0 currentColor; } 50% { box-shadow: 0 0 0 4px transparent; } }
+.live-dot { animation: pulse-dot 1.6s ease-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-  .shimmer, .eq i, .sheet-in, .pop-in { animation: none !important; }
-  * { transition: none !important; }
+  .shimmer, .eq i, .live-dot { animation: none !important; }
 }
